@@ -60,6 +60,9 @@ class Game:
         self.space = space
         self.score = 0
         self.direction: Direction = 'down'
+        # Bloqueio que impede múltiplas mudanças de direção antes do próximo step
+        # Quando True, change_direction() rejeita novas mudanças até step() ser executado.
+        self._changed_this_step: bool = False
         # iniciar a cobra no centro (opcional)
         start_x = (width // (2*space)) * space
         start_y = (height // (2*space)) * space
@@ -91,11 +94,18 @@ class Game:
     def change_direction(self, new_direction: Direction) -> bool:
         """Atualiza direção evitando reverso direto. Retorna True se aceito."""
         opposites = {'up':'down', 'down':'up', 'left':'right', 'right':'left'}
+        # valida input
         if new_direction not in opposites:
             return False
+        # se já mudou nesta iteração, negar até o próximo step (delay)
+        if self._changed_this_step:
+            return False
+        # não permitir reverso direto
         if opposites[new_direction] == self.direction:
             return False
+        # aplicar mudança e bloquear novas mudanças até step()
         self.direction = new_direction
+        self._changed_this_step = True
         return True
 
     def _compute_next_head(self) -> Tuple[int,int]:
@@ -150,7 +160,8 @@ class Game:
         if self._check_collisions():
             self.game_over = True
             status = 'game_over'
-
+        # permitir mudanças de direção no próximo passo
+        self._changed_this_step = False
         return {
             'status': status,
             'snake': [list(c) for c in self.snake.coordinates],
