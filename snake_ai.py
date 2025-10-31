@@ -177,10 +177,29 @@ def get_snake_inputs(g):
     snake_body = [tuple(coord) for coord in g.snake.coordinates[1:]]
     grid_size = (g.width // g.space, g.height // g.space)
 
+    # 1. Distância à comida (normalizada)
     distance_to_food = distanceToFood(snake_head, tuple(g.food.coordinates))
+    max_distance = g.width + g.height
+    normalized_distance = distance_to_food / max_distance
+    
+    # 2. Direção da comida (4 valores binários: up, down, left, right)
+    food_x, food_y = g.food.coordinates
+    head_x, head_y = snake_head
+    
+    food_up = 1.0 if food_y < head_y else 0.0
+    food_down = 1.0 if food_y > head_y else 0.0
+    food_left = 1.0 if food_x < head_x else 0.0
+    food_right = 1.0 if food_x > head_x else 0.0
+    
+    # 3. Distâncias aos obstáculos
     distances_to_obstacles = distancesToObstacles(snake_head, snake_body, grid_size)
+    
+    # Normalizar distâncias (0 a 1)
+    max_grid_distance = max(grid_size)
+    normalized_obstacles = [d / max_grid_distance for d in distances_to_obstacles]
 
-    return [distance_to_food] + distances_to_obstacles
+    # Total: 1 + 4 + 8 = 13 inputs
+    return [normalized_distance, food_up, food_down, food_left, food_right] + normalized_obstacles
 
 
 # ==================== ESTATÍSTICAS ====================
@@ -238,8 +257,11 @@ def eval_genome(genome, config):
     # Variáveis de controle
     fitness = 0
     moves_without_food = 0
-    max_moves_without_food = 100  # Reduzido de 200 para 100
+    max_moves_without_food = 150  # Aumentado para dar mais tempo
     total_moves = 0
+    
+    # Distância inicial à comida
+    initial_distance = distanceToFood(g.snake.head(), tuple(g.food.coordinates))
     
     # Loop do jogo
     while not g.game_over and moves_without_food < max_moves_without_food:
@@ -257,25 +279,34 @@ def eval_genome(genome, config):
         state = g.step()
         
         total_moves += 1
+        moves_without_food += 1
         
-        # Calcular fitness
+        # Calcular fitness baseado no movimento
         if state['status'] == 'ate':
-            # Comeu comida: RECOMPENSA MASSIVA!
-            fitness += 10000  # Aumentado de 1000 para 10000
+            # COMEU COMIDA: RECOMPENSA GIGANTE!
+            fitness += 50000  # Massivo!
             moves_without_food = 0
+            # Resetar distância inicial para a nova comida
+            initial_distance = distanceToFood(g.snake.head(), tuple(g.food.coordinates))
         else:
-            # Sobreviveu: muito pouca recompensa
-            fitness += 0.1  # Reduzido de 1 para 0.1
-            moves_without_food += 1
-        
-        # SEM penalidade por morrer - remover incentivo negativo
+            # Recompensar aproximação da comida
+            current_distance = distanceToFood(g.snake.head(), tuple(g.food.coordinates))
+            
+            # Se aproximou da comida, ganhar pontos
+            if current_distance < initial_distance:
+                fitness += 10  # Bônus por se aproximar
+            else:
+                fitness -= 5  # Pequena penalidade por se afastar
+            
+            initial_distance = current_distance
     
-    # Bônus exponencial e massivo por score
+    # Bônus MASSIVO e exponencial por cada comida
     if g.score > 0:
-        fitness += (g.score ** 2) * 5000  # Crescimento exponencial
+        fitness += (g.score ** 2.5) * 10000
     
-    # Pequeno bônus por sobrevivência
-    fitness += total_moves * 0.05
+    # Penalidade severa se não comeu nada
+    if g.score == 0:
+        fitness = fitness * 0.1  # Reduz fitness drasticamente
     
     return fitness, g.score, total_moves
 
